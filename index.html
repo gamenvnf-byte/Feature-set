@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作品集</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #ffffff;
+            color: #000000;
+            font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            font-weight: normal;
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+        }
+
+        /* 通用表格樣式 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 35px;
+            background-color: #fff;
+        }
+
+        th, td {
+            border: 1px solid #000000;
+            height: 28px; /* 依圖片範例設定緊湊的列高 */
+            padding: 4px 8px;
+            text-align: left;
+            font-size: 16px;
+        }
+
+        /* 調整表格一的欄位寬度比例 */
+        .table-one td {
+            width: 25%;
+        }
+
+        /* 調整表格二的欄位寬度比例 */
+        .table-two th:first-child, 
+        .table-two td:first-child {
+            width: 20%;
+        }
+        .table-two th:last-child, 
+        .table-two td:last-child {
+            width: 80%;
+        }
+
+        th {
+            font-weight: normal;
+        }
+
+        /* 超連結樣式 */
+        a {
+            color: #0000ee;
+            text-decoration: underline;
+        }
+        a:visited {
+            color: #551a8b;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>作品集</h1>
+
+        <!-- 上方區塊：4欄表格 -->
+        <table class="table-one">
+            <tr>
+                <td><a href="https://gamenvnf-byte.github.io/Feature-set/99x99jpg.html">99x99jpg</a></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+        </table>
+
+        <!-- 下方區塊：詳細說明表格 -->
+        <table class="table-two">
+            <thead>
+                <tr>
+                    <th>頁面</th>
+                    <th>說明(readme)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a href="https://gamenvnf-byte.github.io/Feature-set/99x99jpg.html">99x99jpg</a></td>
+                    <td>就把照片切成方格狀，要切多少自己設定的網頁。(由AI gemini 編輯)</td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+</body>
+</html>
