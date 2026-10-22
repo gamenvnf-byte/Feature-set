@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>萬用圖片多宮格切圖產生器</title>
+    <style>
+        body {
+            background-color: #1e1e24;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        h2 { margin-bottom: 5px; color: #fff; }
+        p { color: #aaa; font-size: 14px; margin-bottom: 20px; }
+        
+        /* 控制面板區域 */
+        .control-panel {
+            background-color: #2a2a35;
+            max-width: 600px;
+            margin: 0 auto 25px auto;
+            padding: 15px 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-group label {
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        .input-group input {
+            width: 60px;
+            padding: 6px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background-color: #1e1e24;
+            color: #fff;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        /* 檔案上傳按鈕樣式 */
+        .upload-btn-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+        .btn {
+            border: 2px solid #00adb5;
+            color: #00adb5;
+            background-color: transparent;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            background-color: #00adb5;
+            color: #fff;
+        }
+        .upload-btn-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* 動態網格容器 */
+        .grid-container {
+            display: grid;
+            gap: 6px;
+            max-width: 550px;
+            margin: 0 auto;
+            background-color: #2a2a35;
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .cell {
+            background: #3e3e4a;
+            border-radius: 4px;
+            overflow: hidden;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            transition: transform 0.2s;
+        }
+        .cell:hover {
+            transform: scale(1.05);
+            z-index: 5;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .cell canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: pointer;
+        }
+        .tip {
+            margin-top: 20px;
+            color: #ffbc00;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>📸 萬用圖片多宮格切圖產生器</h2>
+    <p>自訂行列數量，一鍵本地切圖，安全又方便。</p>
+
+    <!-- 控制面板 -->
+    <div class="control-panel">
+        <div class="upload-btn-wrapper">
+            <button class="btn">1. 選取並載入圖片</button>
+            <input type="file" id="imageLoader" accept="image/*" />
+        </div>
+        
+        <!-- 👈 新增的兩個輸入格 -->
+        <div class="input-group">
+            <label for="colsInput">欄數 (寬):</label>
+            <input type="number" id="colsInput" value="3" min="1" max="50">
+        </div>
+        <div class="input-group">
+            <label for="rowsInput">列數 (高):</label>
+            <input type="number" id="rowsInput" value="3" min="1" max="50">
+        </div>
+    </div>
+
+    <!-- 切圖顯示區域 -->
+    <div class="grid-container" id="gridContainer" style="grid-template-columns: repeat(3, 1fr);">
+        <!-- 預設提示畫面 -->
+        <div class="cell" style="grid-column: span 3; aspect-ratio: auto; padding: 40px; color: #888; justify-content: center;">請先點擊上方按鈕載入圖片</div>
+    </div>
+
+    <div class="tip" id="downloadTip">💡 裁切成功！現在您可以對著任何一個格子點擊「右鍵另存圖片」（手機長按）單獨下載！</div>
+
+    <script>
+        const imageLoader = document.getElementById('imageLoader');
+        const gridContainer = document.getElementById('gridContainer');
+        const downloadTip = document.getElementById('downloadTip');
+        const colsInput = document.getElementById('colsInput');
+        const rowsInput = document.getElementById('rowsInput');
+
+        let currentImg = null; // 用來暫存當前載入的圖片物件
+
+        // 監聽圖片載入
+        imageLoader.addEventListener('change', handleImage, false);
+
+        // 監聽數字格的改變，只要一換數字就即時重新裁切
+        colsInput.addEventListener('input', () => { if(currentImg) sliceImage(currentImg); });
+        rowsInput.addEventListener('input', () => { if(currentImg) sliceImage(currentImg); });
+
+        function handleImage(e) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    currentImg = img; // 暫存圖片
+                    sliceImage(img);
+                }
+                img.src = event.target.result;
+            }
+            if(e.target.files[0]) {
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        }
+
+        function sliceImage(img) {
+            // 讀取目前的欄與列數量（若輸入空值或小於1，預設為1）
+            let cols = parseInt(colsInput.value) || 1;
+            let rows = parseInt(rowsInput.value) || 1;
+            
+            // 安全限制避免網頁卡死（最高限制50x50）
+            if (cols > 50) { cols = 50; colsInput.value = 50; }
+            if (rows > 50) { rows = 50; rowsInput.value = 50; }
+
+            // 清空舊的網格
+            gridContainer.innerHTML = '';
+            
+            // 動態調整 CSS Grid 的欄數
+            gridContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            
+            // 計算正方形裁切（以照片較短邊為基準，並置中裁切）
+            const minSide = Math.min(img.width, img.height);
+            const startX = (img.width - minSide) / 2;
+            const startY = (img.height - minSide) / 2;
+            
+            // 根據使用者輸入的行列，計算每一小格的原始像素尺寸
+            const sliceWidth = minSide / cols;
+            const sliceHeight = minSide / rows;
+
+            // 循環生成網格
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = sliceWidth;
+                    canvas.height = sliceHeight;
+                    const ctx = canvas.getContext('2d');
+
+                    // 精確裁切原圖
+                    ctx.drawImage(
+                        img, 
+                        startX + (c * sliceWidth), startY + (r * sliceHeight), sliceWidth, sliceHeight, // 原圖裁切區
+                        0, 0, sliceWidth, sliceHeight // 目標畫布
+                    );
+
+                    cell.appendChild(canvas);
+                    gridContainer.appendChild(cell);
+                }
+            }
+            // 顯示下載提示
+            downloadTip.style.display = 'block';
+        }
+    </script>
+
+</body>
+</html>
