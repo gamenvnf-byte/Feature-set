@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互動打磚塊遊戲 - Ball and Bat</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 10px;
+        }
+        .game-layout {
+            display: flex;
+            gap: 20px;
+            max-width: 900px;
+            width: 100%;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        /* 遊戲畫布 */
+        canvas {
+            background-color: #111;
+            border: 4px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: block;
+        }
+        /* 側邊資訊面板 */
+        .sidebar {
+            width: 260px;
+            background-color: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        h2 { font-size: 20px; margin-bottom: 15px; text-align: center; color: #00adb5; }
+        .stat-box {
+            background: #202020;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .stat-box span:last-child { font-weight: bold; color: #ffbc00; }
+        
+        /* 排行榜 */
+        .leaderboard {
+            margin-top: 15px;
+            background: #202020;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .leaderboard h3 { font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid #444; padding-bottom: 4px; color: #aaa; }
+        .leaderboard ol { padding-left: 20px; font-size: 12px; color: #ddd; }
+        .leaderboard li { margin-bottom: 4px; }
+
+        /* 遊戲結束/暫停覆蓋提示 */
+        #gameOverlay {
+            position: absolute;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #ff4141;
+            box-shadow: 0 0 20px rgba(255, 65, 65, 0.4);
+            display: none;
+            z-index: 10;
+        }
+        #gameOverlay h1 { color: #ff4141; font-size: 24px; margin-bottom: 10px; }
+        #gameOverlay p { font-size: 14px; margin-bottom: 15px; color: #ccc; }
+        #gameOverlay button {
+            background: #00adb5; border: none; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;
+        }
+        #gameOverlay button:hover { background: #00c2cb; }
+    </style>
+</head>
+<body>
+
+    <div class="game-layout">
+        <!-- 畫布區域 -->
+        <div style="position: relative;">
+            <canvas id="gameCanvas" width="480" height="520"></canvas>
+            
+            <!-- 彈出提示（拍照/重開） -->
+            <div id="gameOverlay">
+                <h1 id="overlayTitle">遊戲停止</h1>
+                <p id="overlayDesc">方塊已到達底部！快截圖拍照上傳吧！</p>
+                <button id="actionBtn" onclick="resetGame()">重新開始</button>
+            </div>
+        </div>
+
+        <!-- 資訊側邊欄 -->
+        <div class="sidebar">
+            <h2>BAT & BALL</h2>
+            <div class="stat-box"><span>目前分數:</span><span id="scoreText">0</span></div>
+            <div class="stat-box"><span>遊戲時間:</span><span id="timeText">0.0s</span></div>
+            <div class="stat-box"><span>場上球數:</span><span id="ballsText">0</span></div>
+            <div class="stat-box"><span>發球狀態:</span><span id="statusText" style="color: #00adb5;">準備發球</span></div>
+            
+            <div class="leaderboard">
+                <h3>🏆 最高 5 筆紀錄 (分數 / 時間)</h3>
+                <ol id="historyList">
+                    <li>暫無紀錄</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const overlay = document.getElementById("gameOverlay");
+        const overlayTitle = document.getElementById("overlayTitle");
+        const overlayDesc = document.getElementById("overlayDesc");
+        const actionBtn = document.getElementById("actionBtn");
+
+        // 遊戲狀態變數
+        let score = 0;
+        let gameTime = 0;
+        let isGameOver = false;
+        let isWaitingForServe = true; 
+        let lastTime = 0;
+
+        // 時間推移控制（方塊下落與生成）
+        let brickSpawnTimer = 0;
+        const SPAWN_INTERVAL = 10; // 每 10 秒往下一行並生成新一行
+        let baseMaxHp = 3; // 初始隨機最大耐久度，隨時間慢慢提升
+
+        // 木棒 (Bat) 設定
+        const paddleHeight = 12;
+        const paddleWidth = 85;
+        let paddleX = (canvas.width - paddleWidth) / 2;
+        let rightPressed = false;
+        let leftPressed = false;
+
+        // 球 (Ball) 陣列
+        let balls = [];
+        const ballRadius = 6;
+
+        // 方塊 (Brick) 設定
+        const brickHeight = 20;
+        const brickPadding = 4;
+        const brickOffsetTop = 30;
+        const brickCols = 7; // 固定每行切成 7 格空間
+        const brickWidth = (canvas.width / brickCols) - brickPadding;
+        let bricks = []; // 存放所有在場上的方塊
+
+        // 紀錄
+        let scoreHistory = JSON.parse(localStorage.getItem('breakout_history')) || [];
+
+        // 監聽控制鍵
+        document.addEventListener("keydown", keyDownHandler, false);
+        document.addEventListener("keyup", keyUpHandler, false);
+        canvas.addEventListener("mousemove", mouseMoveHandler, false);
+        canvas.addEventListener("click", clickHandler, false);
+
+        function keyDownHandler(e) {
+            if(e.key == "Right" || e.key == "ArrowRight") rightPressed = true;
+            else if(e.key == "Left" || e.key == "ArrowLeft") leftPressed = true;
+        }
+        function keyUpHandler(e) {
+            if(e.key == "Right" || e.key == "ArrowRight") rightPressed = false;
+            else if(e.key == "Left" || e.key == "ArrowLeft") leftPressed = false;
+        }
+        function mouseMoveHandler(e) {
+            const relativeX = e.clientX - canvas.getBoundingClientRect().left;
+            if(relativeX > 0 && relativeX < canvas.width) {
+                paddleX = relativeX - paddleWidth / 2;
+                // 限制不超出邊界
+                if(paddleX < 0) paddleX = 0;
+                if(paddleX > canvas.width - paddleWidth) paddleX = canvas.width - paddleWidth;
+            }
+        }
+        function clickHandler() {
+            if (isWaitingForServe && !isGameOver) {
+                serveBall();
+            }
+        }
+
+        // 發球邏輯
+        function serveBall() {
+            isWaitingForServe = false;
+            document.getElementById("statusText").innerText = "戰鬥中";
+            document.getElementById("statusText").style.color = "#ff4141";
+            // 從木棒中央往上發射一隻球，帶有隨機角度
+            const angle = (Math.random() * 40 - 20) * Math.PI / 180; // -20度 ~ +20度
+            const speed = 4;
+            balls.push({
+                x: paddleX + paddleWidth / 2,
+                y: canvas.height - paddleHeight - ballRadius - 2,
+                dx: speed * Math.sin(angle),
+                dy: -speed * Math.cos(angle)
+            });
+        }
+
+        // 生成新一行的方塊 (置於頂端，舊的往下推)
+        function spawnBrickRow() {
+            // 先將場上所有方塊的 y 往下推一行
+            for (let i = 0; i < bricks.length; i++) {
+                bricks[i].row++;
+                bricks[i].y = brickOffsetTop + bricks[i].row * (brickHeight + brickPadding);
+                
+                // 💡 關鍵需求：如果方塊觸碰到或超越木棒這一行，遊戲停止方便拍照
+                if (bricks[i].y + brickHeight >= canvas.height - paddleHeight - 10) {
+                    endGameByBlockReach();
+                    return;
+                }
+            }
+
+            // 隨機決定這一行要生成多少個方塊 (至少1個，至多滿格)
+            const count = Math.floor(Math.random() * brickCols) + 1;
+            // 隨機抽選哪些位置要放方塊
+            let positions = [];
+            while(positions.length < count) {
+                let r = Math.floor(Math.random() * brickCols);
+                if(!positions.includes(r)) positions.push(r);
+            }
+
+            // 隨著遊戲時間推移，增加基礎最大耐久度 (最高9)
+            baseMaxHp = Math.min(9, 3 + Math.floor(gameTime / 30));
+
+            positions.forEach(col => {
+                const hp = Math.floor(Math.random() * baseMaxHp) + 1; // 隨機耐久度
+                // 獎勵設定：多數無獎勵(0)，少數藏有球數增加獎勵(2~6顆)
+                let bonus = 0;
+                if(Math.random() < 0.25) { // 25% 機率藏有獎勵
+                    bonus = Math.floor(Math.random() * 5) + 2; // 2 ~ 6
+                }
+
+                bricks.push({
+                    col: col,
+                    row: 0,
+                    x: col * (brickWidth + brickPadding) + brickPadding/2,
+                    y: brickOffsetTop,
+                    hp: hp,
+                    maxHp: hp,
+                    bonus: bonus
+                });
+            });
+        }
+
+        // 畫木棒
+        function drawPaddle() {
+            ctx.beginPath();
+            ctx.rect(paddleX, canvas.height - paddleHeight - 5, paddleWidth, paddleHeight);
+            ctx.fillStyle = "#00adb5";
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // 畫球
+        function drawBalls() {
+            balls.forEach(ball => {
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI*2);
+                ctx.fillStyle = "#fff";
+                ctx.fill();
+                ctx.closePath();
+            });
+        }
+
+        // 畫方塊
+        function drawBricks() {
+            bricks.forEach(brick => {
+                ctx.beginPath();
+                ctx.rect(brick.x, brick.y, brickWidth, brickHeight);
+                
+// 根據耐久度給予不同漸層顏色
+let colors = ["#4e65f5", "#42b883", "#ffbc00", "#ff5f40", "#f43f5e", "#d946ef", "#a855f7", "#6366f1", "#14b8a6"];
+ctx.fillStyle = colors[(brick.hp - 1) % colors.length];
+ctx.fill();
+ctx.closePath();
+// 顯示耐久度數字
+ctx.fillStyle = "#fff";
+ctx.font = "11px sans-serif";
+ctx.textAlign = "center";
+ctx.textBaseline = "middle";
+ctx.fillText(brick.hp, brick.x + brickWidth/2, brick.y + brickHeight/2);
+// 如果帶有獎勵，畫一個小驚嘆號標誌
+if(brick.bonus > 0) {
+ctx.fillStyle = "rgba(255,255,255,0.4)";
+ctx.font = "bold 9px sans-serif";
+ctx.fillText("+"+brick.bonus, brick.x + brickWidth - 10, brick.y + 7);
+}
+});
+}
+// 碰撞與物理邏輯轉換
+function moveAndCollide() {
+// 1. 移動木棒
+if(rightPressed && paddleX < canvas.width - paddleWidth) paddleX += 6;
+if(leftPressed && paddleX > 0) paddleX -= 6;
+// 2. 處理場上的球
+for (let i = balls.length - 1; i >= 0; i--) {
+let b = balls[i];
+b.x += b.dx;
+b.y += b.dy;
+// 左右牆壁反彈
+if(b.x + b.dx > canvas.width - ballRadius || b.x + b.dx < ballRadius) {
+b.dx = -b.dx;
+}
+// 天花板反彈
+if(b.y + b.dy < ballRadius) {
+b.dy = -b.dy;
+}
+// 木棒反彈機制 (碰到木棒高度範圍)
+if (b.y + b.dy > canvas.height - paddleHeight - 5 - ballRadius &&
+b.y < canvas.height - 5) {
+if (b.x > paddleX && b.x < paddleX + paddleWidth) {
+// 💡 關鍵需求：球碰到會順著碰撞位置的角度彈回去
+let hitPos = (b.x - (paddleX + paddleWidth / 2)) / (paddleWidth / 2); // 算出 -1 ~ 1 之間的比例
+let maxAngle = 60 * Math.PI / 180; // 最大反彈角 60 度
+let speed = Math.sqrt(b.dxb.dx + b.dyb.dy);
+b.dx = speed * Math.sin(hitPos * maxAngle);
+b.dy = -speed * Math.cos(hitPos * maxAngle);
+continue;
+}
+}
+// 💡 關鍵需求：球穿越過去的話就消失
+if(b.y > canvas.height) {
+balls.splice(i, 1);
+continue;
+}
+// 方塊碰撞檢測
+for (let j = bricks.length - 1; j >= 0; j--) {
+let r = bricks[j];
+if (b.x > r.x && b.x < r.x + brickWidth && b.y > r.y && b.y < r.y + brickHeight) {
+b.dy = -b.dy; // 垂直反彈
+r.hp--;       // 扣除耐久度
+// 💡 關鍵需求：擊破方塊時才進行算分，耐久越高分數越高
+if(r.hp <= 0) {
+score += (r.maxHp * 10); // 例如一滴血 10 分
+// 💡 關鍵需求：有藏著球數增加獎勵，增加 2~6 顆不等
+if(r.bonus > 0) {
+for(let k = 0; k < r.bonus; k++) {
+balls.push({
+x: r.x + brickWidth/2,
+y: r.y + brickHeight/2,
+dx: (Math.random() * 4 - 2),
+dy: (Math.random() * 3 + 2) // 往下散開彈射
+});
+}
+}
+bricks.splice(j, 1); // 移除方塊
+}
+break;
+}
+}
+}
+// 💡 關鍵需求：場上的球如果全數都穿越消失了，就重新選發球點
+if (balls.length === 0 && !isWaitingForServe && !isGameOver) {
+isWaitingForServe = true;
+document.getElementById("statusText").innerText = "準備發球";
+document.getElementById("statusText").style.color = "#00adb5";
+}
+}
+// 方塊觸底導致遊戲結束停止
+function endGameByBlockReach() {
+isGameOver = true;
+saveScore();
+updateLeaderboardView();
+// 彈出拍照提醒畫面
+overlayTitle.innerText = "🚨 敵方進犯！遊戲停止";
+overlayDesc.innerHTML = 方塊已觸碰到防線！<br>最終得分：<b style="color:#ffbc00;font-size:18px;">${score}</b> 分<br>存活時間：<b>${gameTime.toFixed(1)}</b> 秒<br><span style="color:#67ca67">📷 現在您可以放心地拍照/截圖分享上傳！</span>;
+actionBtn.innerText = "挑戰下一局";
+overlay.style.display = "block";
+}
+// 儲存最高 5 筆紀錄
+function saveScore() {
+scoreHistory.push({ score: score, time: gameTime.toFixed(1) });
+// 先依分數高到低排行，若分數相同則比時間長
+scoreHistory.sort((a, b) => b.score - a.score || b.time - a.time);
+// 只要前 5 筆
+scoreHistory = scoreHistory.slice(0, 5);
+localStorage.setItem('breakout_history', JSON.stringify(scoreHistory));
+}
+// 更新排行榜視圖
+function updateLeaderboardView() {
+const listContainer = document.getElementById("historyList");
+if (scoreHistory.length === 0) {
+listContainer.innerHTML = "暫無紀錄";
+return;
+}
+listContainer.innerHTML = scoreHistory.map((item, index) => {
+return <li>第 ${index+1} 名：<b style="color:#ffbc00">${item.score}分</b> / ${item.time}秒</li>;
+}).join('');
+}
+// 重置遊戲
+function resetGame() {
+score = 0;
+gameTime = 0;
+brickSpawnTimer = 0;
+isGameOver = false;
+isWaitingForServe = true;
+balls = [];
+bricks = [];
+baseMaxHp = 3;
+paddleX = (canvas.width - paddleWidth) / 2;
+document.getElementById("statusText").innerText = "準備發球";
+document.getElementById("statusText").style.color = "#00adb5";
+overlay.style.display = "none";
+// 初始生出兩行方塊作起手
+spawnBrickRow();
+// 延遲一下再生第二行
+setTimeout(() => { if(!isGameOver && bricks.length > 0) spawnBrickRow(); }, 100);
+}
+// 遊戲主循環
+function update(timestamp) {
+if (!lastTime) lastTime = timestamp;
+let elapsed = (timestamp - lastTime) / 1000;
+lastTime = timestamp;
+// 如果正在等待發球，輔助畫出停留在木棒上的虛擬預覽球
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+if (!isGameOver) {
+if (!isWaitingForServe) {
+gameTime += elapsed;
+brickSpawnTimer += elapsed;
+// 時間推移：每 10 秒自動下降並催生新方塊
+if (brickSpawnTimer >= SPAWN_INTERVAL) {
+brickSpawnTimer = 0;
+spawnBrickRow();
+}
+}
+moveAndCollide();
+}
+// 繪製所有物件
+drawBricks();
+drawPaddle();
+drawBalls();
+if (isWaitingForServe && !isGameOver) {
+// 畫出準備發球的水滴球
+ctx.beginPath();
+ctx.arc(paddleX + paddleWidth / 2, canvas.height - paddleHeight - ballRadius - 5, ballRadius, 0, Math.PI*2);
+ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+ctx.fill();
+ctx.closePath();
+// 畫發球引導字
+ctx.fillStyle = "rgba(0, 173, 181, 0.6)";
+ctx.font = "14px sans-serif";
+ctx.textAlign = "center";
+ctx.fillText("點擊畫面 或 按下鍵盤任意鍵 發球", canvas.width / 2, canvas.height - 50);
+}
+// 更新儀表板數據
+document.getElementById("scoreText").innerText = score;
+document.getElementById("timeText").innerText = gameTime.toFixed(1) + "s";
+document.getElementById("ballsText").innerText = balls.length;
+requestAnimationFrame(update);
+}
+// 啟動初始化
+updateLeaderboardView();
+resetGame();
+requestAnimationFrame(update);
